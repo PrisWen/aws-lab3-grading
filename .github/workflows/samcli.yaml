@@ -29,13 +29,12 @@ jobs:
           pipx install aws-sam-cli
           sam --version
     
-      - name: SAM Build
+      - name: SAM Deploy (with fixed stack name)
         run: |
-          sam build
           sam deploy \
-              --stack-name coderoad-lab-3 \
-              --region us-east-1 \
-              --capabilities CAPABILITY_IAM \
-              --resolve-s3 \
-              --no-confirm-changeset \
-              --no-fail-on-empty-changeset
+            --stack-name coderoad-lab-3 \
+            --region us-east-1 \
+            --no-confirm-changeset \
+            --no-fail-on-empty-changeset \
+            --resolve-s3 \ 
+            --region us-east-1 
