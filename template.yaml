@@ -1,0 +1,88 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Transform: AWS::Serverless-2016-10-31
+Description: S3 -> Lambda (Ingest) -> SQS -> Lambda (Metadata Extractor) -> S3
+
+Globals:
+  Function:
+    Runtime: python3.12
+    Timeout: 30
+    MemorySize: 256
+    Architectures: [x86_64]
+
+Resources:
+  ImagesBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub coderoad-images-${AWS::AccountId}-${AWS::Region}
+  
+  CoderoadS3EventsQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: coderoad-s3-events-queue    
+
+  IngestFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: src/ingest_lab/
+      Handler: ingest.lambda_handler
+      Environment:
+        Variables:
+          INPUT_PREFIX: incoming/
+          QUEUE_URL: !Ref CoderoadS3EventsQueue 
+      Policies:
+        - S3CrudPolicy:
+            BucketName: !Sub coderoad-images-${AWS::AccountId}-${AWS::Region}
+        - SQSSendMessagePolicy:
+            QueueName: coderoad-s3-events-queue
+      Timeout: 10
+             
+      Events:
+        ImageUpload:
+          Type: S3
+          Properties:
+            Bucket: !Ref ImagesBucket
+            Events: s3:ObjectCreated:*
+            Filter:
+              S3Key:
+                Rules:
+                  - Name: prefix
+                    Value: incoming/
+  
+  MetadataExtractionFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: src/metadata_lab/
+      Handler: metadata.lambda_handler
+      Environment:
+        Variables:
+          OUTPUT_PREFIX: metadata
+      Policies:
+        - SQSPollerPolicy:
+            QueueName: coderoad-s3-events-queue
+        - S3CrudPolicy:
+            BucketName: !Sub coderoad-images-${AWS::AccountId}-${AWS::Region}
+      Events:
+        SQSEvent:
+          Type: SQS
+          Properties:
+            Queue: !GetAtt CoderoadS3EventsQueue.Arn
+            BatchSize: 10
+
+Outputs:
+  BucketName:
+    Description: S3 bucket for images
+    Value: !Ref ImagesBucket
+
+  S3EventsQueueUrl:
+    Description: Queue URL for S3 events
+    Value: !Ref CoderoadS3EventsQueue
+
+  IngestFunctionName:
+    Description: Ingest lambda Function
+    Value: !Ref IngestFunction
+
+  MetadataExtractorFunctionName:
+    Description: Metadata extraction Lambda
+    Value: !Ref MetadataExtractionFunction
+
+                  
